@@ -1,0 +1,18 @@
+# NEVER commit these
+.env
+*.pyc
+__pycache__/
+
+# Output files (large, regenerated each run)
+output/audio/*.mp3
+output/videos/*.mp4
+output/thumbnails/*.jpg
+output/scripts/*.json
+output/videos/_temp/
+
+# Database (stays local or use Railway volume)
+database/posts.db
+
+# Logs
+logs/
+*.log

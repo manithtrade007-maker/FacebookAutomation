@@ -1,0 +1,24 @@
+# Core
+anthropic>=0.25.0
+requests>=2.31.0
+python-dotenv>=1.0.0
+schedule>=1.2.0
+
+# Trend Research
+pytrends>=4.9.2
+praw>=7.7.1
+
+# Voiceover
+elevenlabs>=1.2.0
+
+# Video & Image
+moviepy>=1.0.3
+Pillow>=10.0.0
+ffmpeg-python>=0.2.0
+
+# Database
+# sqlite3 is built into Python
+
+# Utilities
+tqdm>=4.66.0
+colorama>=0.4.6
