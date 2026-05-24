@@ -1,15 +1,12 @@
 """
 dashboard/app.py — Multi-Page Web Dashboard + Auto Scheduler
-Shows stats for ALL pages and runs the daily automation on Railway.
+Runs the Flask dashboard AND the daily automation on Railway.
 Everything starts automatically — no manual commands needed.
-
-Access: https://web-production-484f1.up.railway.app
 """
 
 import sys
 import os
 import json
-import sqlite3
 import subprocess
 import requests
 import threading
@@ -21,11 +18,10 @@ from flask import Flask, render_template, jsonify
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from dotenv import load_dotenv
 load_dotenv()
-from config import DB_PATH, POST_TIME
+from config import POST_TIME
 
 app = Flask(__name__)
 pipeline_running = False
-
 BASE_DIR   = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PAGES_FILE = os.path.join(BASE_DIR, "pages.json")
 
@@ -33,7 +29,6 @@ PAGES_FILE = os.path.join(BASE_DIR, "pages.json")
 # ── Pages loader ─────────────────────────────────────────────────────────────
 
 def load_pages() -> list:
-    """Load pages from pages.json or PAGES_JSON env var (Railway)."""
     pages_json_env = os.getenv("PAGES_JSON", "")
     if pages_json_env:
         try:
@@ -43,7 +38,6 @@ def load_pages() -> list:
     if os.path.exists(PAGES_FILE):
         with open(PAGES_FILE) as f:
             return [p for p in json.load(f) if p.get("active", True)]
-    # fallback to single page from env
     return [{
         "name":         "Default Page",
         "page_id":      os.getenv("FB_PAGE_ID"),
@@ -59,7 +53,6 @@ def load_pages() -> list:
 def _pipeline_job():
     global pipeline_running
     if pipeline_running:
-        print("[Scheduler] Pipeline already running, skipping.")
         return
     print(f"[Scheduler] Starting daily pipeline at {datetime.now().strftime('%H:%M:%S')}")
     pipeline_running = True
@@ -89,7 +82,7 @@ def _start_background_scheduler():
         time.sleep(60)
 
 
-# ── Facebook API helpers ──────────────────────────────────────────────────────
+# ── Facebook API ──────────────────────────────────────────────────────────────
 
 def fetch_page_stats(page_id: str, token: str) -> dict:
     try:
@@ -103,15 +96,11 @@ def fetch_page_stats(page_id: str, token: str) -> dict:
         return {}
 
 
-def fetch_page_videos(page_id: str, token: str, limit: int = 10) -> list:
+def fetch_page_videos(page_id: str, token: str, limit: int = 5) -> list:
     try:
         r = requests.get(
             f"https://graph.facebook.com/v19.0/{page_id}/videos",
-            params={
-                "fields":       "title,description,length,views,created_time",
-                "access_token": token,
-                "limit":        limit,
-            },
+            params={"fields": "title,description,length,views,created_time", "access_token": token, "limit": limit},
             timeout=15,
         )
         return r.json().get("data", [])
@@ -136,10 +125,9 @@ def index():
 
 @app.route("/api/stats")
 def api_stats():
-    pages      = load_pages()
-    all_videos = []
-    page_rows  = []
-
+    pages           = load_pages()
+    all_videos      = []
+    page_rows       = []
     total_followers = 0
     total_likes     = 0
     total_views     = 0
@@ -148,8 +136,6 @@ def api_stats():
     for page in pages:
         pid   = page["page_id"]
         token = page["access_token"]
-        name  = page["name"]
-
         stats  = fetch_page_stats(pid, token)
         videos = fetch_page_videos(pid, token, limit=5)
 
@@ -161,7 +147,7 @@ def api_stats():
         page_views = 0
         video_rows = []
         for v in videos:
-            views = v.get("views", 0)
+            views  = v.get("views", 0)
             length = format_duration(v.get("length", 0))
             page_views  += views
             total_views += views
@@ -170,23 +156,26 @@ def api_stats():
                 est_minutes += int(views * mins * 0.5)
             except Exception:
                 pass
-            video_rows.append({
+            row = {
+                "page":   page["name"],
                 "title":  (v.get("title") or v.get("description", "Untitled"))[:50],
                 "status": "published",
                 "views":  views,
                 "length": length,
                 "date":   v.get("created_time", "")[:10],
-            })
-            all_videos.append(video_rows[-1])
+            }
+            video_rows.append(row)
+            all_videos.append(row)
 
         page_rows.append({
-            "name":       name,
-            "niche":      page.get("niche", "—"),
-            "post_time":  page.get("post_time", "—"),
-            "followers":  followers,
-            "likes":      likes,
-            "views":      page_views,
-            "videos":     video_rows,
+            "name":      page["name"],
+            "niche":     page.get("niche", "—"),
+            "post_time": page.get("post_time", "—"),
+            "followers": followers,
+            "likes":     likes,
+            "views":     page_views,
+            "videos":    len(video_rows),
+            "status":    "active" if stats.get("name") else "error",
         })
 
     return jsonify({
@@ -198,17 +187,6 @@ def api_stats():
         "pages":        page_rows,
         "videos":       all_videos,
     })
-
-
-@app.route("/api/pages")
-def api_pages():
-    pages = load_pages()
-    return jsonify([{
-        "name":      p["name"],
-        "niche":     p.get("niche", "—"),
-        "post_time": p.get("post_time", "—"),
-        "active":    p.get("active", True),
-    } for p in pages])
 
 
 @app.route("/api/run", methods=["POST"])
@@ -231,30 +209,22 @@ def api_refresh_token():
 @app.route("/api/status")
 def api_status():
     pages = load_pages()
-    next_run = None
-    for job in schedule.get_jobs():
-        t = job.next_run
-        if t and (next_run is None or t < next_run):
-            next_run = t
     return jsonify({
-        "scheduler":           "running",
-        "pipeline_running":    pipeline_running,
-        "pages_count":         len(pages),
-        "post_time":           POST_TIME,
-        "next_scheduled_run":  next_run.isoformat() if next_run else None,
+        "scheduler":        "running",
+        "pipeline_running": pipeline_running,
+        "pages_count":      len(pages),
+        "post_time":        POST_TIME,
     })
 
 
 # ── Start ─────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    scheduler_thread = threading.Thread(target=_start_background_scheduler, daemon=True)
-    scheduler_thread.start()
-
+    threading.Thread(target=_start_background_scheduler, daemon=True).start()
     port = int(os.environ.get("PORT", 8080))
     pages = load_pages()
     print(f"\n{'='*55}")
     print(f"  MMO Dashboard — {len(pages)} page(s) configured")
-    print(f"  Posting daily at {POST_TIME} | Token refresh every 50 days")
+    print(f"  Posting daily at {POST_TIME}")
     print(f"{'='*55}\n")
     app.run(host="0.0.0.0", port=port, debug=False)

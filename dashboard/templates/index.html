@@ -3,69 +3,58 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>MMO Dashboard — Best Our Vibes</title>
+  <title>MMO Dashboard</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-
-    body {
-      background: #0f0f1a;
-      color: #e0e0e0;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      min-height: 100vh;
-    }
+    body { background: #0f0f1a; color: #e0e0e0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; min-height: 100vh; }
 
     header {
       background: linear-gradient(135deg, #1a1a2e, #16213e);
       border-bottom: 1px solid #2a2a4a;
       padding: 20px 30px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
+      display: flex; justify-content: space-between; align-items: center;
     }
-
     header h1 { font-size: 22px; color: #fff; }
     header h1 span { color: #ffd700; }
-
-    .live-dot {
-      display: flex; align-items: center; gap: 8px;
-      font-size: 13px; color: #888;
-    }
-    .dot {
-      width: 8px; height: 8px; border-radius: 50%;
-      background: #00ff88; animation: pulse 2s infinite;
-    }
-    @keyframes pulse {
-      0%, 100% { opacity: 1; } 50% { opacity: 0.3; }
-    }
+    .live-dot { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #888; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: #00ff88; animation: pulse 2s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
 
     .container { padding: 30px; max-width: 1200px; margin: 0 auto; }
+    section { margin-bottom: 30px; }
+    h2 { font-size: 16px; color: #ffd700; margin-bottom: 20px; }
 
     /* Cards */
-    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; margin-bottom: 30px; }
-
-    .card {
-      background: #1a1a2e;
-      border: 1px solid #2a2a4a;
-      border-radius: 12px;
-      padding: 24px;
-    }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; }
+    .card { background: #1a1a2e; border: 1px solid #2a2a4a; border-radius: 12px; padding: 24px; }
     .card-label { font-size: 12px; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
     .card-value { font-size: 36px; font-weight: 700; color: #fff; }
     .card-sub { font-size: 12px; color: #666; margin-top: 4px; }
-    .card.gold { border-color: #ffd700; }
-    .card.gold .card-value { color: #ffd700; }
-    .card.green { border-color: #00ff88; }
-    .card.green .card-value { color: #00ff88; }
+    .card.gold { border-color: #ffd700; } .card.gold .card-value { color: #ffd700; }
+    .card.green { border-color: #00ff88; } .card.green .card-value { color: #00ff88; }
+    .card.blue { border-color: #0088ff; } .card.blue .card-value { color: #0088ff; }
 
-    /* Progress bar */
-    .progress-section {
-      background: #1a1a2e;
-      border: 1px solid #2a2a4a;
-      border-radius: 12px;
-      padding: 24px;
-      margin-bottom: 30px;
+    /* Pages grid */
+    .pages-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
+    .page-card {
+      background: #1a1a2e; border: 1px solid #2a2a4a; border-radius: 12px; padding: 20px;
+      display: flex; flex-direction: column; gap: 12px;
     }
-    .progress-section h2 { font-size: 16px; color: #ffd700; margin-bottom: 20px; }
+    .page-card-header { display: flex; justify-content: space-between; align-items: flex-start; }
+    .page-name { font-size: 16px; font-weight: 700; color: #fff; }
+    .page-niche {
+      font-size: 11px; padding: 3px 10px; border-radius: 20px; font-weight: 600; text-transform: uppercase;
+      background: #ffd70020; color: #ffd700; border: 1px solid #ffd70055;
+    }
+    .page-stats { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+    .page-stat { text-align: center; }
+    .page-stat-val { font-size: 20px; font-weight: 700; color: #fff; }
+    .page-stat-label { font-size: 11px; color: #666; margin-top: 2px; }
+    .page-footer { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #666; }
+    .status-dot-active { color: #00ff88; } .status-dot-error { color: #ff4444; }
+
+    /* Progress */
+    .box { background: #1a1a2e; border: 1px solid #2a2a4a; border-radius: 12px; padding: 24px; }
     .progress-item { margin-bottom: 16px; }
     .progress-item label { font-size: 13px; color: #aaa; display: flex; justify-content: space-between; margin-bottom: 6px; }
     .bar-bg { background: #2a2a4a; border-radius: 6px; height: 10px; }
@@ -73,72 +62,27 @@
     .bar-yellow { background: linear-gradient(90deg, #ffd700, #ff9800); }
     .bar-green { background: linear-gradient(90deg, #00ff88, #00bcd4); }
 
-    /* Controls */
-    .controls {
-      background: #1a1a2e;
-      border: 1px solid #2a2a4a;
-      border-radius: 12px;
-      padding: 24px;
-      margin-bottom: 30px;
-    }
-    .controls h2 { font-size: 16px; color: #ffd700; margin-bottom: 20px; }
+    /* Buttons */
     .btn-row { display: flex; gap: 12px; flex-wrap: wrap; }
-
-    .btn {
-      padding: 12px 24px;
-      border-radius: 8px;
-      border: none;
-      font-size: 14px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.2s;
-    }
-    .btn:hover { transform: translateY(-2px); }
-    .btn:active { transform: translateY(0); }
-    .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
-
+    .btn { padding: 12px 24px; border-radius: 8px; border: none; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+    .btn:hover { transform: translateY(-2px); } .btn:active { transform: translateY(0); } .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
     .btn-primary { background: #ffd700; color: #000; }
-    .btn-success { background: #00ff88; color: #000; }
-    .btn-danger  { background: #ff4444; color: #fff; }
     .btn-info    { background: #0088ff; color: #fff; }
+    .btn-danger  { background: #ff4444; color: #fff; }
 
-    /* Status message */
-    #status-msg {
-      margin-top: 14px;
-      padding: 10px 16px;
-      border-radius: 8px;
-      font-size: 13px;
-      display: none;
-    }
+    #status-msg { margin-top: 14px; padding: 10px 16px; border-radius: 8px; font-size: 13px; display: none; }
     .msg-success { background: #00ff8820; border: 1px solid #00ff88; color: #00ff88; }
     .msg-error   { background: #ff444420; border: 1px solid #ff4444; color: #ff4444; }
     .msg-info    { background: #0088ff20; border: 1px solid #0088ff; color: #0088ff; }
 
-    /* Videos table */
-    .videos-section {
-      background: #1a1a2e;
-      border: 1px solid #2a2a4a;
-      border-radius: 12px;
-      padding: 24px;
-    }
-    .videos-section h2 { font-size: 16px; color: #ffd700; margin-bottom: 20px; }
+    /* Table */
     table { width: 100%; border-collapse: collapse; }
     th { text-align: left; font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 1px; padding: 0 12px 12px; }
     td { padding: 14px 12px; border-top: 1px solid #2a2a4a; font-size: 14px; }
     tr:hover td { background: #ffffff05; }
-
-    .badge {
-      display: inline-block;
-      padding: 3px 10px;
-      border-radius: 20px;
-      font-size: 11px;
-      font-weight: 600;
-    }
+    .badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; }
     .badge-success { background: #00ff8825; color: #00ff88; border: 1px solid #00ff8855; }
-    .badge-fail    { background: #ff444425; color: #ff4444; border: 1px solid #ff444455; }
-
-    .spinner { display: inline-block; animation: spin 1s linear infinite; }
-    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    .page-tag { background: #ffffff10; color: #aaa; border-radius: 4px; padding: 2px 8px; font-size: 11px; }
 
     footer { text-align: center; padding: 30px; color: #444; font-size: 12px; }
   </style>
@@ -146,135 +90,175 @@
 <body>
 
 <header>
-  <h1>MMO Dashboard — <span>Best Our Vibes</span></h1>
-  <div class="live-dot">
-    <div class="dot"></div>
-    Live — auto-refreshes every 30s
-  </div>
+  <h1>MMO Dashboard — <span id="header-pages">Loading...</span></h1>
+  <div class="live-dot"><div class="dot"></div>Live — auto-refreshes every 30s</div>
 </header>
 
 <div class="container">
 
-  <!-- Stats Cards -->
-  <div class="grid">
-    <div class="card gold">
-      <div class="card-label">Followers</div>
-      <div class="card-value" id="followers">—</div>
-      <div class="card-sub">Goal: 5,000 for monetization</div>
+  <!-- Combined Stats -->
+  <section>
+    <div class="grid">
+      <div class="card gold">
+        <div class="card-label">Total Followers</div>
+        <div class="card-value" id="followers">—</div>
+        <div class="card-sub">Goal: 5,000 per page</div>
+      </div>
+      <div class="card blue">
+        <div class="card-label">Active Pages</div>
+        <div class="card-value" id="pages-count">—</div>
+        <div class="card-sub">Posting daily automatically</div>
+      </div>
+      <div class="card green">
+        <div class="card-label">Videos Posted</div>
+        <div class="card-value" id="total-videos">—</div>
+        <div class="card-sub">Across all pages</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Total Views</div>
+        <div class="card-value" id="total-views">—</div>
+        <div class="card-sub">Across all videos</div>
+      </div>
     </div>
-    <div class="card">
-      <div class="card-label">Page Likes</div>
-      <div class="card-value" id="likes">—</div>
-      <div class="card-sub">Total page likes</div>
+  </section>
+
+  <!-- Pages -->
+  <section class="box">
+    <h2>My Pages</h2>
+    <div class="pages-grid" id="pages-grid">
+      <div style="color:#666">Loading pages...</div>
     </div>
-    <div class="card green">
-      <div class="card-label">Videos Posted</div>
-      <div class="card-value" id="total-videos">—</div>
-      <div class="card-sub">Total published</div>
-    </div>
-    <div class="card">
-      <div class="card-label">Total Views</div>
-      <div class="card-value" id="total-views">—</div>
-      <div class="card-sub">Across all videos</div>
-    </div>
-  </div>
+  </section>
 
   <!-- Monetization Progress -->
-  <div class="progress-section">
-    <h2>Monetization Progress</h2>
+  <section class="box">
+    <h2>Monetization Progress (Combined)</h2>
     <div class="progress-item">
-      <label>
-        <span>Followers</span>
-        <span id="follower-label">0 / 5,000</span>
-      </label>
+      <label><span>Total Followers</span><span id="follower-label">0 / 5,000</span></label>
       <div class="bar-bg"><div class="bar-fill bar-yellow" id="follower-bar" style="width:0%"></div></div>
     </div>
     <div class="progress-item">
-      <label>
-        <span>Minutes Watched (estimate)</span>
-        <span id="minutes-label">0 / 60,000</span>
-      </label>
+      <label><span>Minutes Watched (estimate)</span><span id="minutes-label">0 / 60,000</span></label>
       <div class="bar-bg"><div class="bar-fill bar-green" id="minutes-bar" style="width:0%"></div></div>
     </div>
-  </div>
+  </section>
 
   <!-- Controls -->
-  <div class="controls">
+  <section class="box">
     <h2>Controls</h2>
     <div class="btn-row">
-      <button class="btn btn-primary" onclick="runPipeline()">▶ Run Pipeline Now</button>
-      <button class="btn btn-success" onclick="startScheduler()">⏰ Start Daily Scheduler</button>
+      <button class="btn btn-primary" onclick="runPipeline()">▶ Run All Pages Now</button>
       <button class="btn btn-info" onclick="loadData()">↻ Refresh Dashboard</button>
+      <button class="btn btn-danger" onclick="refreshToken()">🔑 Refresh Tokens</button>
     </div>
     <div id="status-msg"></div>
-  </div>
+  </section>
 
   <!-- Videos Table -->
-  <div class="videos-section">
+  <section class="box">
     <h2>Posted Videos</h2>
     <table>
       <thead>
         <tr>
-          <th>#</th>
-          <th>Title</th>
-          <th>Status</th>
-          <th>Views</th>
-          <th>Length</th>
-          <th>Date</th>
+          <th>#</th><th>Page</th><th>Title</th><th>Status</th><th>Views</th><th>Length</th><th>Date</th>
         </tr>
       </thead>
       <tbody id="videos-tbody">
-        <tr><td colspan="6" style="color:#666;text-align:center;padding:30px">Loading...</td></tr>
+        <tr><td colspan="7" style="color:#666;text-align:center;padding:30px">Loading...</td></tr>
       </tbody>
     </table>
-  </div>
+  </section>
 
 </div>
 
-<footer>Facebook Automation Dashboard — Best Our Vibes &nbsp;|&nbsp; Built with Python</footer>
+<footer>Facebook Automation Dashboard — <span id="footer-pages">Multi-Page</span> | Built with Python + Railway</footer>
 
 <script>
+  const NICHE_COLORS = {
+    tech:    '#0088ff',
+    finance: '#00ff88',
+    health:  '#ff88aa',
+    ai:      '#aa88ff',
+  };
+
   function showMsg(text, type='info') {
     const el = document.getElementById('status-msg');
-    el.textContent = text;
-    el.className = `msg-${type}`;
-    el.style.display = 'block';
+    el.textContent = text; el.className = `msg-${type}`; el.style.display = 'block';
     if (type !== 'info') setTimeout(() => el.style.display = 'none', 5000);
+  }
+
+  function renderPages(pages) {
+    const grid = document.getElementById('pages-grid');
+    if (!pages || !pages.length) { grid.innerHTML = '<div style="color:#666">No pages configured.</div>'; return; }
+    grid.innerHTML = pages.map(p => {
+      const color = NICHE_COLORS[p.niche] || '#ffd700';
+      const statusIcon = p.status === 'active' ? '🟢' : '🔴';
+      return `
+        <div class="page-card">
+          <div class="page-card-header">
+            <div class="page-name">${p.name}</div>
+            <div class="page-niche" style="background:${color}20;color:${color};border-color:${color}55">${p.niche}</div>
+          </div>
+          <div class="page-stats">
+            <div class="page-stat">
+              <div class="page-stat-val">${p.followers.toLocaleString()}</div>
+              <div class="page-stat-label">Followers</div>
+            </div>
+            <div class="page-stat">
+              <div class="page-stat-val">${p.views.toLocaleString()}</div>
+              <div class="page-stat-label">Views</div>
+            </div>
+            <div class="page-stat">
+              <div class="page-stat-val">${p.videos}</div>
+              <div class="page-stat-label">Videos</div>
+            </div>
+          </div>
+          <div class="page-footer">
+            <span>${statusIcon} ${p.status}</span>
+            <span>Posts daily at ${p.post_time}</span>
+          </div>
+        </div>`;
+    }).join('');
   }
 
   async function loadData() {
     try {
       const res = await fetch('/api/stats');
       const data = await res.json();
+      const pageCount = (data.pages || []).length;
 
+      document.getElementById('header-pages').textContent = `${pageCount} Page${pageCount !== 1 ? 's' : ''} Active`;
+      document.getElementById('footer-pages').textContent = `${pageCount} Pages`;
+      document.getElementById('pages-count').textContent = pageCount;
       document.getElementById('followers').textContent = data.followers.toLocaleString();
-      document.getElementById('likes').textContent = data.likes.toLocaleString();
       document.getElementById('total-videos').textContent = data.total_videos;
       document.getElementById('total-views').textContent = data.total_views.toLocaleString();
 
-      const fPct = Math.min(100, (data.followers / 5000) * 100);
+      const fPct = Math.min(100, (data.followers / (5000 * pageCount)) * 100);
       document.getElementById('follower-bar').style.width = fPct + '%';
-      document.getElementById('follower-label').textContent = `${data.followers.toLocaleString()} / 5,000`;
+      document.getElementById('follower-label').textContent = `${data.followers.toLocaleString()} / ${(5000 * pageCount).toLocaleString()}`;
 
       const mPct = Math.min(100, (data.est_minutes / 60000) * 100);
       document.getElementById('minutes-bar').style.width = mPct + '%';
       document.getElementById('minutes-label').textContent = `${data.est_minutes.toLocaleString()} / 60,000 (est.)`;
 
+      renderPages(data.pages);
+
       const tbody = document.getElementById('videos-tbody');
       if (!data.videos.length) {
-        tbody.innerHTML = '<tr><td colspan="6" style="color:#666;text-align:center;padding:30px">No videos posted yet.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" style="color:#666;text-align:center;padding:30px">No videos posted yet.</td></tr>';
         return;
       }
       tbody.innerHTML = data.videos.map((v, i) => `
         <tr>
           <td style="color:#666">${i+1}</td>
+          <td><span class="page-tag">${v.page || '—'}</span></td>
           <td>${v.title}</td>
-          <td><span class="badge ${v.status === 'published' ? 'badge-success' : 'badge-fail'}">${v.status}</span></td>
+          <td><span class="badge badge-success">${v.status}</span></td>
           <td>${v.views.toLocaleString()}</td>
           <td>${v.length}</td>
           <td style="color:#666">${v.date}</td>
-        </tr>
-      `).join('');
+        </tr>`).join('');
     } catch(e) {
       showMsg('Error loading data: ' + e.message, 'error');
     }
@@ -282,36 +266,25 @@
 
   async function runPipeline() {
     const btn = event.target;
-    btn.disabled = true;
-    btn.textContent = '⏳ Running...';
-    showMsg('Pipeline started — this takes 3-5 minutes. Check back soon.', 'info');
+    btn.disabled = true; btn.textContent = '⏳ Running...';
+    showMsg('Pipeline started for all pages — takes 3-5 min per page.', 'info');
     try {
       const res = await fetch('/api/run', { method: 'POST' });
       const data = await res.json();
-      if (data.success) {
-        showMsg('Pipeline started successfully in background!', 'success');
-      } else {
-        showMsg('Error: ' + data.error, 'error');
-      }
-    } catch(e) {
-      showMsg('Failed to start pipeline: ' + e.message, 'error');
-    }
-    btn.disabled = false;
-    btn.textContent = '▶ Run Pipeline Now';
+      showMsg(data.success ? data.message : 'Error: ' + data.error, data.success ? 'success' : 'error');
+    } catch(e) { showMsg('Failed: ' + e.message, 'error'); }
+    btn.disabled = false; btn.textContent = '▶ Run All Pages Now';
   }
 
-  async function startScheduler() {
-    showMsg('Starting daily scheduler...', 'info');
+  async function refreshToken() {
+    showMsg('Refreshing tokens for all pages...', 'info');
     try {
-      const res = await fetch('/api/scheduler', { method: 'POST' });
+      const res = await fetch('/api/refresh-token', { method: 'POST' });
       const data = await res.json();
-      showMsg(data.message, data.success ? 'success' : 'error');
-    } catch(e) {
-      showMsg('Error: ' + e.message, 'error');
-    }
+      showMsg(data.message, 'success');
+    } catch(e) { showMsg('Error: ' + e.message, 'error'); }
   }
 
-  // load on start, refresh every 30s
   loadData();
   setInterval(loadData, 30000);
 </script>
