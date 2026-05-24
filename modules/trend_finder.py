@@ -86,26 +86,24 @@ def score_reddit_topics(topics: list[dict]) -> list[dict]:
     return sorted(scored, key=lambda x: x["final_score"], reverse=True)
 
 
-def get_trending_topics(top_n: int = 5) -> list[dict]:
+def get_trending_topics(top_n: int = 5, niche: str = None) -> list[dict]:
     """
     Main function — combines Google Trends + Reddit to find the best topics.
+    niche overrides the global NICHE setting (for multi-page support).
     Returns top_n topics ready to be turned into video scripts.
     """
-    niche_cfg = NICHE_CONFIG.get(NICHE, NICHE_CONFIG["tech"])
-    print(f"[TrendFinder] Searching trends for niche: {NICHE}")
+    active_niche = niche or NICHE
+    niche_cfg = NICHE_CONFIG.get(active_niche, NICHE_CONFIG["tech"])
+    print(f"[TrendFinder] Searching trends for niche: {active_niche}")
 
-    # 1. Get Google Trends scores
     print("[TrendFinder] Fetching Google Trends...")
     trend_scores = get_google_trends(niche_cfg["trend_keywords"])
 
-    # 2. Get Reddit hot topics
     print("[TrendFinder] Fetching Reddit hot posts...")
     reddit_topics = get_reddit_hot_topics(niche_cfg["subreddits"])
 
-    # 3. Score and rank Reddit topics
     ranked = score_reddit_topics(reddit_topics)
 
-    # 4. Build final output
     results = []
     for topic in ranked[:top_n]:
         results.append({
@@ -113,7 +111,7 @@ def get_trending_topics(top_n: int = 5) -> list[dict]:
             "source":      f"r/{topic['subreddit']}",
             "score":       topic["final_score"],
             "reddit_url":  topic["url"],
-            "niche":       NICHE,
+            "niche":       active_niche,
             "fetched_at":  datetime.utcnow().isoformat(),
         })
 

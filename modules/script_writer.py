@@ -59,15 +59,16 @@ Return ONLY a JSON object in this exact format:
 }}"""
 
 
-def generate_script(topic: str) -> dict:
+def generate_script(topic: str, niche: str = None) -> dict:
     """
     Sends a topic to Gemini and returns a fully structured video script.
-    Uses Gemini 1.5 Flash — free tier, no credit card needed.
+    niche overrides the global NICHE setting (for multi-page support).
     """
-    niche_cfg = NICHE_CONFIG.get(NICHE, NICHE_CONFIG["tech"])
+    active_niche = niche or NICHE
+    niche_cfg = NICHE_CONFIG.get(active_niche, NICHE_CONFIG["tech"])
     prompt = SYSTEM_PROMPT + "\n\n" + SCRIPT_TEMPLATE.format(
         topic=topic,
-        niche=NICHE,
+        niche=active_niche,
         tone=niche_cfg["script_tone"],
     )
 

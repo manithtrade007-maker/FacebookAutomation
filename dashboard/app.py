@@ -1,13 +1,14 @@
 """
-dashboard/app.py — Web Dashboard + Auto Scheduler
-Runs the Flask dashboard AND the daily automation on Railway.
+dashboard/app.py — Multi-Page Web Dashboard + Auto Scheduler
+Shows stats for ALL pages and runs the daily automation on Railway.
 Everything starts automatically — no manual commands needed.
 
-Access from anywhere: https://web-production-484f1.up.railway.app
+Access: https://web-production-484f1.up.railway.app
 """
 
 import sys
 import os
+import json
 import sqlite3
 import subprocess
 import requests
@@ -20,13 +21,40 @@ from flask import Flask, render_template, jsonify
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from dotenv import load_dotenv
 load_dotenv()
-from config import FB_PAGE_ID, FB_ACCESS_TOKEN, DB_PATH, POST_TIME
+from config import DB_PATH, POST_TIME
 
 app = Flask(__name__)
 pipeline_running = False
 
+BASE_DIR   = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+PAGES_FILE = os.path.join(BASE_DIR, "pages.json")
 
-# ── Background scheduler jobs ────────────────────────────────────────────────
+
+# ── Pages loader ─────────────────────────────────────────────────────────────
+
+def load_pages() -> list:
+    """Load pages from pages.json or PAGES_JSON env var (Railway)."""
+    pages_json_env = os.getenv("PAGES_JSON", "")
+    if pages_json_env:
+        try:
+            return [p for p in json.loads(pages_json_env) if p.get("active", True)]
+        except Exception:
+            pass
+    if os.path.exists(PAGES_FILE):
+        with open(PAGES_FILE) as f:
+            return [p for p in json.load(f) if p.get("active", True)]
+    # fallback to single page from env
+    return [{
+        "name":         "Default Page",
+        "page_id":      os.getenv("FB_PAGE_ID"),
+        "access_token": os.getenv("FB_ACCESS_TOKEN"),
+        "niche":        os.getenv("NICHE", "tech"),
+        "post_time":    os.getenv("POST_TIME", "18:00"),
+        "active":       True,
+    }]
+
+
+# ── Background scheduler ─────────────────────────────────────────────────────
 
 def _pipeline_job():
     global pipeline_running
@@ -36,8 +64,7 @@ def _pipeline_job():
     print(f"[Scheduler] Starting daily pipeline at {datetime.now().strftime('%H:%M:%S')}")
     pipeline_running = True
     try:
-        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        subprocess.run(["python3", "main.py"], cwd=project_root)
+        subprocess.run(["python3", "main.py"], cwd=BASE_DIR)
     except Exception as e:
         print(f"[Scheduler] Pipeline error: {e}")
     finally:
@@ -45,7 +72,7 @@ def _pipeline_job():
 
 
 def _token_refresh_job():
-    print(f"[Scheduler] Running token refresh at {datetime.now().strftime('%H:%M:%S')}")
+    print(f"[Scheduler] Running token refresh...")
     try:
         from token_refresh import run_refresh
         run_refresh()
@@ -54,62 +81,42 @@ def _token_refresh_job():
 
 
 def _start_background_scheduler():
-    """Runs in a background thread — schedules and executes all jobs."""
-    print(f"[Scheduler] Background scheduler started.")
-    print(f"[Scheduler] Videos will post daily at {POST_TIME}")
-    print(f"[Scheduler] Token refreshes every 50 days")
-
+    print(f"[Scheduler] Started — posting daily at {POST_TIME}, token refresh every 50 days")
     schedule.every().day.at(POST_TIME).do(_pipeline_job)
     schedule.every(50).days.do(_token_refresh_job)
-
     while True:
         schedule.run_pending()
         time.sleep(60)
 
 
-# ── Helpers ──────────────────────────────────────────────────────────────────
+# ── Facebook API helpers ──────────────────────────────────────────────────────
 
-def fetch_page_stats() -> dict:
+def fetch_page_stats(page_id: str, token: str) -> dict:
     try:
-        url = f"https://graph.facebook.com/v19.0/{FB_PAGE_ID}"
-        params = {"fields": "name,fan_count,followers_count", "access_token": FB_ACCESS_TOKEN}
-        r = requests.get(url, params=params, timeout=10)
+        r = requests.get(
+            f"https://graph.facebook.com/v19.0/{page_id}",
+            params={"fields": "name,fan_count,followers_count", "access_token": token},
+            timeout=10,
+        )
         return r.json()
     except Exception:
         return {}
 
 
-def get_posted_videos() -> list:
+def fetch_page_videos(page_id: str, token: str, limit: int = 10) -> list:
     try:
-        url = f"https://graph.facebook.com/v19.0/{FB_PAGE_ID}/videos"
-        params = {
-            "fields": "title,description,length,views,created_time",
-            "access_token": FB_ACCESS_TOKEN,
-            "limit": 20,
-        }
-        r = requests.get(url, params=params, timeout=15)
-        data = r.json()
-        videos = data.get("data", [])
-        result = []
-        for v in videos:
-            result.append({
-                "fb_post_id": v.get("id"),
-                "title":      v.get("title") or v.get("description", "Untitled")[:60],
-                "status":     "published",
-                "views":      v.get("views", 0),
-                "length":     format_duration(v.get("length", 0)),
-                "created_at": v.get("created_time", "")[:10],
-            })
-        return result
+        r = requests.get(
+            f"https://graph.facebook.com/v19.0/{page_id}/videos",
+            params={
+                "fields":       "title,description,length,views,created_time",
+                "access_token": token,
+                "limit":        limit,
+            },
+            timeout=15,
+        )
+        return r.json().get("data", [])
     except Exception:
-        try:
-            conn = sqlite3.connect(DB_PATH)
-            conn.row_factory = sqlite3.Row
-            rows = conn.execute("SELECT * FROM posts ORDER BY created_at DESC LIMIT 20").fetchall()
-            conn.close()
-            return [dict(r) for r in rows]
-        except Exception:
-            return []
+        return []
 
 
 def format_duration(seconds) -> str:
@@ -129,85 +136,125 @@ def index():
 
 @app.route("/api/stats")
 def api_stats():
-    page   = fetch_page_stats()
-    videos = get_posted_videos()
+    pages      = load_pages()
+    all_videos = []
+    page_rows  = []
 
-    followers   = page.get("followers_count", 0)
-    likes       = page.get("fan_count", 0)
-    total_views = 0
-    est_minutes = 0
-    video_rows  = []
+    total_followers = 0
+    total_likes     = 0
+    total_views     = 0
+    est_minutes     = 0
 
-    for v in videos:
-        views  = v.get("views", 0)
-        length = v.get("length", "—")
-        total_views += views
-        try:
-            mins = int(length.split("m")[0]) if "m" in str(length) else 0
-            est_minutes += int(views * mins * 0.5)
-        except Exception:
-            pass
-        video_rows.append({
-            "title":  (v.get("title") or "Untitled")[:50],
-            "status": v.get("status", "published"),
-            "views":  views,
-            "length": length,
-            "date":   (v.get("created_at") or "")[:10],
+    for page in pages:
+        pid   = page["page_id"]
+        token = page["access_token"]
+        name  = page["name"]
+
+        stats  = fetch_page_stats(pid, token)
+        videos = fetch_page_videos(pid, token, limit=5)
+
+        followers = stats.get("followers_count", 0)
+        likes     = stats.get("fan_count", 0)
+        total_followers += followers
+        total_likes     += likes
+
+        page_views = 0
+        video_rows = []
+        for v in videos:
+            views = v.get("views", 0)
+            length = format_duration(v.get("length", 0))
+            page_views  += views
+            total_views += views
+            try:
+                mins = int(length.split("m")[0]) if "m" in str(length) else 0
+                est_minutes += int(views * mins * 0.5)
+            except Exception:
+                pass
+            video_rows.append({
+                "title":  (v.get("title") or v.get("description", "Untitled"))[:50],
+                "status": "published",
+                "views":  views,
+                "length": length,
+                "date":   v.get("created_time", "")[:10],
+            })
+            all_videos.append(video_rows[-1])
+
+        page_rows.append({
+            "name":       name,
+            "niche":      page.get("niche", "—"),
+            "post_time":  page.get("post_time", "—"),
+            "followers":  followers,
+            "likes":      likes,
+            "views":      page_views,
+            "videos":     video_rows,
         })
 
     return jsonify({
-        "followers":    followers,
-        "likes":        likes,
-        "total_videos": len([v for v in videos if v.get("status") == "published"]),
+        "followers":    total_followers,
+        "likes":        total_likes,
+        "total_videos": len(all_videos),
         "total_views":  total_views,
         "est_minutes":  est_minutes,
-        "videos":       video_rows,
+        "pages":        page_rows,
+        "videos":       all_videos,
     })
+
+
+@app.route("/api/pages")
+def api_pages():
+    pages = load_pages()
+    return jsonify([{
+        "name":      p["name"],
+        "niche":     p.get("niche", "—"),
+        "post_time": p.get("post_time", "—"),
+        "active":    p.get("active", True),
+    } for p in pages])
 
 
 @app.route("/api/run", methods=["POST"])
 def api_run():
     global pipeline_running
     if pipeline_running:
-        return jsonify({"success": False, "error": "Pipeline is already running."})
-
+        return jsonify({"success": False, "error": "Pipeline already running."})
     thread = threading.Thread(target=_pipeline_job, daemon=True)
     thread.start()
-    return jsonify({"success": True, "message": "Pipeline started in background."})
+    return jsonify({"success": True, "message": f"Pipeline started for all {len(load_pages())} pages."})
 
 
 @app.route("/api/refresh-token", methods=["POST"])
 def api_refresh_token():
     thread = threading.Thread(target=_token_refresh_job, daemon=True)
     thread.start()
-    return jsonify({"success": True, "message": "Token refresh started. Check Railway logs."})
+    return jsonify({"success": True, "message": "Token refresh started for all pages."})
 
 
 @app.route("/api/status")
 def api_status():
+    pages = load_pages()
     next_run = None
     for job in schedule.get_jobs():
         t = job.next_run
         if t and (next_run is None or t < next_run):
             next_run = t
     return jsonify({
-        "scheduler": "running",
-        "pipeline_running": pipeline_running,
-        "post_time": POST_TIME,
-        "next_scheduled_run": next_run.isoformat() if next_run else None,
+        "scheduler":           "running",
+        "pipeline_running":    pipeline_running,
+        "pages_count":         len(pages),
+        "post_time":           POST_TIME,
+        "next_scheduled_run":  next_run.isoformat() if next_run else None,
     })
 
 
 # ── Start ─────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    # start background scheduler automatically on launch
     scheduler_thread = threading.Thread(target=_start_background_scheduler, daemon=True)
     scheduler_thread.start()
 
     port = int(os.environ.get("PORT", 8080))
-    print(f"\n{'='*50}")
-    print(f"  MMO Dashboard running on port {port}")
-    print(f"  Scheduler running — posting daily at {POST_TIME}")
-    print(f"{'='*50}\n")
+    pages = load_pages()
+    print(f"\n{'='*55}")
+    print(f"  MMO Dashboard — {len(pages)} page(s) configured")
+    print(f"  Posting daily at {POST_TIME} | Token refresh every 50 days")
+    print(f"{'='*55}\n")
     app.run(host="0.0.0.0", port=port, debug=False)

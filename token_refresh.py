@@ -1,28 +1,30 @@
 """
 token_refresh.py — Auto Facebook Token Refresher
-Exchanges the current FB token for a new 60-day token.
-Updates local .env AND Railway environment variables automatically.
+Exchanges tokens for ALL pages in pages.json for new 60-day tokens.
+Also updates Railway environment variables automatically.
 
 Run manually:    python3 token_refresh.py
 Auto (cron):     runs every 50 days via scheduler.py
 """
 
 import os
+import json
 import requests
 from datetime import datetime, timedelta
 from dotenv import load_dotenv, set_key
 
 load_dotenv()
 
-# ── Config ───────────────────────────────────────────────────────────────────
 APP_ID          = os.getenv("FB_APP_ID")
 APP_SECRET      = os.getenv("FB_APP_SECRET")
-FB_ACCESS_TOKEN = os.getenv("FB_ACCESS_TOKEN")
 RAILWAY_TOKEN   = os.getenv("RAILWAY_API_TOKEN")
 RAILWAY_SVC_ID  = os.getenv("RAILWAY_SERVICE_ID")
 RAILWAY_ENV_ID  = os.getenv("RAILWAY_ENVIRONMENT_ID")
 RAILWAY_PROJ_ID = os.getenv("RAILWAY_PROJECT_ID")
-ENV_FILE        = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+
+BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
+PAGES_FILE = os.path.join(BASE_DIR, "pages.json")
+ENV_FILE   = os.path.join(BASE_DIR, ".env")
 
 _RAILWAY_MUTATION = """
 mutation variableUpsert($input: VariableUpsertInput!) {
@@ -31,9 +33,10 @@ mutation variableUpsert($input: VariableUpsertInput!) {
 """
 
 
-def refresh_token(current_token: str) -> str:
-    """Exchange current token for a new 60-day long-lived token."""
-    print("[TokenRefresh] Exchanging token with Facebook...")
+# ── Token exchange ───────────────────────────────────────────────────────────
+
+def exchange_token(current_token: str) -> str:
+    """Exchange a token for a new 60-day long-lived token."""
     r = requests.get(
         "https://graph.facebook.com/v19.0/oauth/access_token",
         params={
@@ -46,24 +49,32 @@ def refresh_token(current_token: str) -> str:
     )
     data = r.json()
     if "access_token" not in data:
-        raise RuntimeError(f"Facebook token exchange failed: {data}")
-
-    new_token  = data["access_token"]
+        raise RuntimeError(f"Token exchange failed: {data}")
     expires_in = data.get("expires_in", 0)
     expires_at = datetime.now() + timedelta(seconds=expires_in)
-    print(f"[TokenRefresh] New token obtained. Expires: {expires_at.strftime('%Y-%m-%d')}")
-    return new_token
+    print(f"  New token obtained. Expires: {expires_at.strftime('%Y-%m-%d')}")
+    return data["access_token"]
 
 
-def update_env_file(new_token: str) -> None:
-    """Updates the local .env file with the new token and refresh timestamp."""
-    set_key(ENV_FILE, "FB_ACCESS_TOKEN", new_token)
-    set_key(ENV_FILE, "TOKEN_LAST_REFRESHED", datetime.now().isoformat())
-    print("[TokenRefresh] .env updated.")
+# ── pages.json update ────────────────────────────────────────────────────────
 
+def load_pages() -> list:
+    if not os.path.exists(PAGES_FILE):
+        return []
+    with open(PAGES_FILE) as f:
+        return json.load(f)
+
+
+def save_pages(pages: list) -> None:
+    with open(PAGES_FILE, "w") as f:
+        json.dump(pages, f, indent=2)
+
+
+# ── Railway sync ─────────────────────────────────────────────────────────────
 
 def _push_railway_var(name: str, value: str) -> bool:
-    """Push a single variable to Railway via GraphQL API."""
+    if not all([RAILWAY_TOKEN, RAILWAY_SVC_ID, RAILWAY_ENV_ID, RAILWAY_PROJ_ID]):
+        return False
     r = requests.post(
         "https://backboard.railway.app/graphql/v2",
         json={
@@ -84,29 +95,27 @@ def _push_railway_var(name: str, value: str) -> bool:
         },
         timeout=15,
     )
-    if r.status_code == 200 and "errors" not in r.json():
-        print(f"[TokenRefresh] Railway {name} updated.")
-        return True
-    print(f"[TokenRefresh] Railway {name} update failed: {r.text}")
-    return False
+    return r.status_code == 200 and "errors" not in r.json()
 
 
-def update_railway(new_token: str) -> bool:
-    """Updates FB_ACCESS_TOKEN and TOKEN_LAST_REFRESHED in Railway."""
-    if not RAILWAY_TOKEN or not RAILWAY_SVC_ID or not RAILWAY_ENV_ID or not RAILWAY_PROJ_ID:
-        print("[TokenRefresh] Railway credentials not set — skipping Railway update.")
-        return False
+def sync_pages_to_railway(pages: list) -> None:
+    """Push the updated pages.json content to Railway as an env var."""
+    if not all([RAILWAY_TOKEN, RAILWAY_SVC_ID, RAILWAY_ENV_ID, RAILWAY_PROJ_ID]):
+        print("[TokenRefresh] Railway credentials not set — skipping Railway sync.")
+        return
+    pages_json = json.dumps(pages)
+    ok = _push_railway_var("PAGES_JSON", pages_json)
+    if ok:
+        print("[TokenRefresh] Railway PAGES_JSON updated.")
+    else:
+        print("[TokenRefresh] Railway PAGES_JSON update failed.")
 
-    ok1 = _push_railway_var("FB_ACCESS_TOKEN", new_token)
-    ok2 = _push_railway_var("TOKEN_LAST_REFRESHED", datetime.now().isoformat())
-    return ok1 and ok2
+    _push_railway_var("TOKEN_LAST_REFRESHED", datetime.now().isoformat())
 
 
 def redeploy_railway() -> None:
-    """Triggers a Railway redeploy so the new token takes effect."""
-    if not RAILWAY_TOKEN or not RAILWAY_SVC_ID:
+    if not all([RAILWAY_TOKEN, RAILWAY_SVC_ID]):
         return
-
     r = requests.post(
         "https://backboard.railway.app/graphql/v2",
         json={
@@ -127,28 +136,49 @@ def redeploy_railway() -> None:
         print("[TokenRefresh] Railway redeploy triggered.")
 
 
-def run_refresh() -> str:
-    """Main function — refreshes the token and updates all locations."""
-    print(f"\n{'='*50}")
-    print(f"  TOKEN REFRESH — {datetime.now().strftime('%Y-%m-%d %H:%M')}")
-    print(f"{'='*50}")
+# ── Main ─────────────────────────────────────────────────────────────────────
 
-    if not FB_ACCESS_TOKEN:
-        print("[TokenRefresh] ERROR: FB_ACCESS_TOKEN not found in .env")
-        return ""
+def run_refresh() -> bool:
+    """Refresh tokens for ALL pages in pages.json."""
+    print(f"\n{'='*55}")
+    print(f"  TOKEN REFRESH — {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    print(f"{'='*55}")
 
     if not APP_ID or not APP_SECRET:
-        print("[TokenRefresh] ERROR: FB_APP_ID or FB_APP_SECRET not set in .env")
-        return ""
+        print("[TokenRefresh] ERROR: FB_APP_ID or FB_APP_SECRET missing from .env")
+        return False
 
-    new_token = refresh_token(FB_ACCESS_TOKEN)
-    update_env_file(new_token)
-    update_railway(new_token)
-    redeploy_railway()
+    pages = load_pages()
+    if not pages:
+        print("[TokenRefresh] No pages found in pages.json")
+        return False
 
-    print(f"\n✅ Token refreshed successfully!")
-    print(f"{'='*50}\n")
-    return new_token
+    print(f"[TokenRefresh] Refreshing tokens for {len(pages)} page(s)...\n")
+    any_success = False
+
+    for i, page in enumerate(pages):
+        name  = page.get("name", f"Page {i+1}")
+        token = page.get("access_token", "")
+        print(f"  [{i+1}/{len(pages)}] {name}")
+        try:
+            new_token = exchange_token(token)
+            pages[i]["access_token"] = new_token
+            any_success = True
+        except Exception as e:
+            print(f"  ❌ Failed: {e}")
+
+    if any_success:
+        save_pages(pages)
+        set_key(ENV_FILE, "TOKEN_LAST_REFRESHED", datetime.now().isoformat())
+        print(f"\n[TokenRefresh] pages.json updated with new tokens.")
+        sync_pages_to_railway(pages)
+        redeploy_railway()
+        print(f"\n✅ Token refresh complete!")
+    else:
+        print(f"\n❌ All token refreshes failed.")
+
+    print(f"{'='*55}\n")
+    return any_success
 
 
 if __name__ == "__main__":

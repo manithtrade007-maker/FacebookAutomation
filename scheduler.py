@@ -1,70 +1,70 @@
 """
-scheduler.py — Automated Daily Runner
-Runs the pipeline every day at the configured POST_TIME.
-Also runs analytics check every morning at 8 AM.
+scheduler.py — Multi-Page Automated Scheduler
+Runs the pipeline for ALL pages in pages.json every day at their configured times.
 Token refresh runs every 50 days automatically.
 
 Usage:
-  python scheduler.py        # start the scheduler (runs forever)
-  python scheduler.py --now  # run pipeline immediately then keep scheduling
+  python scheduler.py        # start (runs forever)
+  python scheduler.py --now  # run all pages immediately then keep scheduling
 """
 
 import argparse
+import json
+import os
 import schedule
 import time
-import os
-from datetime import datetime, timedelta
+from datetime import datetime
 from colorama import Fore, Style, init
 
 init(autoreset=True)
 
-from config import POST_TIME, VIDEOS_PER_DAY
-from main import run_pipeline
-from modules.analytics import run_daily_analytics
+BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
+PAGES_FILE = os.path.join(BASE_DIR, "pages.json")
 
-ANALYTICS_TIME = "08:00"   # check analytics every morning
-TOKEN_REFRESH_DAYS = 50    # refresh before 60-day expiry
+TOKEN_REFRESH_DAYS = 50
 
 
-def pipeline_job():
-    print(f"\n{Fore.YELLOW}[Scheduler] Triggering daily pipeline at {datetime.now().strftime('%H:%M:%S')}{Style.RESET_ALL}")
-    try:
-        run_pipeline()
-    except Exception as e:
-        print(f"{Fore.RED}[Scheduler] Pipeline error: {e}{Style.RESET_ALL}")
+def load_pages() -> list:
+    if not os.path.exists(PAGES_FILE):
+        from config import FB_PAGE_ID, FB_ACCESS_TOKEN, NICHE, POST_TIME
+        return [{"name": "Default", "page_id": FB_PAGE_ID,
+                 "access_token": FB_ACCESS_TOKEN, "niche": NICHE,
+                 "post_time": POST_TIME, "active": True}]
+    with open(PAGES_FILE) as f:
+        return [p for p in json.load(f) if p.get("active", True)]
 
 
-def analytics_job():
-    print(f"\n{Fore.CYAN}[Scheduler] Running daily analytics at {datetime.now().strftime('%H:%M:%S')}{Style.RESET_ALL}")
-    try:
-        run_daily_analytics()
-    except Exception as e:
-        print(f"{Fore.RED}[Scheduler] Analytics error: {e}{Style.RESET_ALL}")
+def make_pipeline_job(page: dict):
+    """Returns a job function bound to a specific page."""
+    def job():
+        name = page["name"]
+        print(f"\n{Fore.YELLOW}[Scheduler] Running pipeline for: {name}{Style.RESET_ALL}")
+        try:
+            from main import run_pipeline
+            run_pipeline(page)
+        except Exception as e:
+            print(f"{Fore.RED}[Scheduler] Error for {name}: {e}{Style.RESET_ALL}")
+    return job
 
 
 def token_refresh_job():
-    print(f"\n{Fore.MAGENTA}[Scheduler] Running scheduled token refresh...{Style.RESET_ALL}")
+    print(f"\n{Fore.MAGENTA}[Scheduler] Running token refresh for all pages...{Style.RESET_ALL}")
     try:
         from token_refresh import run_refresh
-        new_token = run_refresh()
-        if new_token:
-            print(f"{Fore.GREEN}[Scheduler] Token refreshed successfully!{Style.RESET_ALL}")
-        else:
-            print(f"{Fore.RED}[Scheduler] Token refresh failed — check credentials.{Style.RESET_ALL}")
+        run_refresh()
     except Exception as e:
         print(f"{Fore.RED}[Scheduler] Token refresh error: {e}{Style.RESET_ALL}")
 
 
 def check_token_age():
     """On startup, refresh if token is 50+ days old."""
-    last_refreshed_str = os.getenv("TOKEN_LAST_REFRESHED", "")
-    if not last_refreshed_str:
+    last_str = os.getenv("TOKEN_LAST_REFRESHED", "")
+    if not last_str:
         return
     try:
-        last_refreshed = datetime.fromisoformat(last_refreshed_str)
-        days_old = (datetime.now() - last_refreshed).days
+        days_old = (datetime.now() - datetime.fromisoformat(last_str)).days
         if days_old >= TOKEN_REFRESH_DAYS:
-            print(f"{Fore.MAGENTA}[Scheduler] Token is {days_old} days old — refreshing now.{Style.RESET_ALL}")
+            print(f"{Fore.MAGENTA}[Scheduler] Token is {days_old} days old — refreshing.{Style.RESET_ALL}")
             token_refresh_job()
         else:
             print(f"{Fore.CYAN}[Scheduler] Token age: {days_old} days (refresh in {TOKEN_REFRESH_DAYS - days_old} days){Style.RESET_ALL}")
@@ -73,43 +73,44 @@ def check_token_age():
 
 
 def start_scheduler(run_now: bool = False):
+    pages = load_pages()
+
     print(f"\n{Fore.YELLOW}{'='*55}")
-    print(f"  SCHEDULER STARTED")
-    print(f"  Pipeline runs daily at: {POST_TIME}")
-    print(f"  Analytics runs daily at: {ANALYTICS_TIME}")
+    print(f"  MULTI-PAGE SCHEDULER STARTED")
+    print(f"  {len(pages)} active page(s)")
+    for p in pages:
+        print(f"  • {p['name']} — {p.get('niche','tech')} — posts at {p.get('post_time','18:00')}")
     print(f"  Token refresh: every {TOKEN_REFRESH_DAYS} days")
-    print(f"  Videos per day: {VIDEOS_PER_DAY}")
     print(f"{'='*55}{Style.RESET_ALL}\n")
 
-    # check token age on startup
     check_token_age()
 
-    # schedule daily pipeline
-    schedule.every().day.at(POST_TIME).do(pipeline_job)
+    # schedule each page at its own post_time
+    for page in pages:
+        post_time = page.get("post_time", "18:00")
+        job_fn = make_pipeline_job(page)
+        schedule.every().day.at(post_time).do(job_fn)
+        print(f"{Fore.CYAN}[Scheduler] {page['name']} scheduled at {post_time}{Style.RESET_ALL}")
 
-    # schedule daily analytics
-    schedule.every().day.at(ANALYTICS_TIME).do(analytics_job)
-
-    # schedule token refresh every 50 days
+    # token refresh every 50 days
     schedule.every(TOKEN_REFRESH_DAYS).days.do(token_refresh_job)
 
     if run_now:
-        print(f"{Fore.GREEN}[Scheduler] --now flag detected. Running pipeline immediately...{Style.RESET_ALL}")
-        pipeline_job()
+        print(f"\n{Fore.GREEN}[Scheduler] --now flag: running all pages immediately...{Style.RESET_ALL}")
+        for page in pages:
+            make_pipeline_job(page)()
 
-    print(f"{Fore.CYAN}[Scheduler] Waiting for next scheduled run. Press Ctrl+C to stop.{Style.RESET_ALL}\n")
-
+    print(f"\n{Fore.CYAN}[Scheduler] Waiting... Press Ctrl+C to stop.{Style.RESET_ALL}\n")
     while True:
         schedule.run_pending()
-        time.sleep(30)   # check every 30 seconds
+        time.sleep(30)
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Facebook Automation Scheduler")
-    parser.add_argument("--now", action="store_true", help="Run pipeline immediately on start")
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--now", action="store_true", help="Run all pages immediately")
     args = parser.parse_args()
-
     try:
         start_scheduler(run_now=args.now)
     except KeyboardInterrupt:
-        print(f"\n{Fore.YELLOW}[Scheduler] Stopped by user.{Style.RESET_ALL}")
+        print(f"\n{Fore.YELLOW}[Scheduler] Stopped.{Style.RESET_ALL}")

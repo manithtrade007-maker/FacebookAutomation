@@ -1,5 +1,6 @@
 # NEVER commit these
 .env
+pages.json
 *.pyc
 __pycache__/
 
