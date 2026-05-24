@@ -47,16 +47,38 @@ def fetch_video_views(video_id: str) -> dict:
 
 
 def get_posted_videos() -> list:
+    """Fetch videos directly from Facebook API — works on any server."""
     try:
-        conn = sqlite3.connect(DB_PATH)
-        conn.row_factory = sqlite3.Row
-        rows = conn.execute(
-            "SELECT * FROM posts ORDER BY created_at DESC LIMIT 20"
-        ).fetchall()
-        conn.close()
-        return [dict(r) for r in rows]
+        url = f"https://graph.facebook.com/v19.0/{FB_PAGE_ID}/videos"
+        params = {
+            "fields": "title,description,length,views,created_time",
+            "access_token": FB_ACCESS_TOKEN,
+            "limit": 20,
+        }
+        r = requests.get(url, params=params, timeout=15)
+        data = r.json()
+        videos = data.get("data", [])
+        result = []
+        for v in videos:
+            result.append({
+                "fb_post_id": v.get("id"),
+                "title":      v.get("title") or v.get("description", "Untitled")[:60],
+                "status":     "published",
+                "views":      v.get("views", 0),
+                "length":     format_duration(v.get("length", 0)),
+                "created_at": v.get("created_time", "")[:10],
+            })
+        return result
     except Exception:
-        return []
+        # fallback to local SQLite if available
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute("SELECT * FROM posts ORDER BY created_at DESC LIMIT 20").fetchall()
+            conn.close()
+            return [dict(r) for r in rows]
+        except Exception:
+            return []
 
 
 def format_duration(seconds) -> str:
@@ -82,29 +104,23 @@ def api_stats():
     followers = page.get("followers_count", 0)
     likes     = page.get("fan_count", 0)
 
-    total_views  = 0
-    est_minutes  = 0
-    video_rows   = []
-
-    published = [v for v in videos if v.get("status") == "published" and v.get("fb_post_id")]
+    total_views = 0
+    est_minutes = 0
+    video_rows  = []
 
     for v in videos:
-        views  = 0
-        length = "—"
-        if v.get("fb_post_id") and v.get("status") == "published":
-            fb_data = fetch_video_views(v["fb_post_id"])
-            views   = fb_data.get("views", 0)
-            length  = format_duration(fb_data.get("length", 0))
-            total_views  += views
-            # estimate minutes: views × avg watch time (assume 50% completion)
-            try:
-                est_minutes += int(views * (float(fb_data.get("length", 0)) * 0.5) / 60)
-            except Exception:
-                pass
+        views  = v.get("views", 0)
+        length = v.get("length", "—")
+        total_views += views
+        try:
+            mins = int(length.split("m")[0]) if "m" in str(length) else 0
+            est_minutes += int(views * mins * 0.5)
+        except Exception:
+            pass
 
         video_rows.append({
             "title":  (v.get("title") or "Untitled")[:50],
-            "status": v.get("status", "unknown"),
+            "status": v.get("status", "published"),
             "views":  views,
             "length": length,
             "date":   (v.get("created_at") or "")[:10],
